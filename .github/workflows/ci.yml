@@ -1,0 +1,57 @@
+name: VSCODE-DEV-CONTAINERS
+on:
+  push:
+    branches: [for-aisuko]
+    tags:
+    - '*'
+
+jobs:
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/') && success()
+      uses: actions/checkout@master
+      with:
+        fetch-depth: 1
+    - name: Docker login
+      if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master') && success()
+      uses: azure/docker-login@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    # I'd like to split the tag of rufus and red-thirteen and going to set them as `rf0.1.0` and `rt0.1.0`
+    - name: Docker build & tag(RUFUS)
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/rf') && success()
+      run:
+        DOCKER_BUILDKIT=1 docker build --no-cache -t ${{ secrets.RUFUS }}:${GITHUB_REF/refs\/tags\//} ${{ secrets.RUFUS_PATH }}
+    - name: Docker push(RUFUS)
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/rf') && success()
+      run:
+        docker push ${{ secrets.RUFUS }}:${GITHUB_REF/refs\/tags\//}
+    - name: Docker Hub Description(RUFUS)
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/rf') && success()
+      uses: peter-evans/dockerhub-description@v2.0.0
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKERHUB_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        DOCKERHUB_REPOSITORY: ${{ secrets.RUFUS }}
+    ##############################################################################################
+    ##############################################################################################
+    - name: Docker build & tag(RED_THIRTEEN)
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/rt') && success()
+      run:
+        DOCKER_BUILDKIT=1 docker build --no-cache -t ${{ secrets.RED_THIRTEEN }}:${GITHUB_REF/refs\/tags\//} ${{ secrets.RED_THIRTEEN_PATH }}
+    - name: Docker push(RED_THIRTEEN)
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/rt') && success()
+      run:
+        docker push ${{ secrets.RED_THIRTEEN }}:${GITHUB_REF/refs\/tags\//}
+    - name: Docker Hub Description(RED_THIRTEEN)
+      if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/rt') && success()
+      uses: peter-evans/dockerhub-description@v2.0.0
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKERHUB_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        DOCKERHUB_REPOSITORY: ${{ secrets.RED_THIRTEEN }}
+    ##############################################################################################
