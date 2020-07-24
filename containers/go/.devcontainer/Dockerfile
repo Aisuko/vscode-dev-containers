@@ -1,10 +1,13 @@
 # Update the VARIANT arg in devcontainer.json to pick an Go version
-ARG VARIANT=1
+ARG VARIANT=1.14.4
 FROM golang:${VARIANT}
 
 # Options for setup script
 ARG INSTALL_ZSH="true"
 ARG UPGRADE_PACKAGES="false"
+
+# This Dockerfile adds a non-root user with sudo access. Update the “remoteUser” property in
+# devcontainer.json to use it. More info: https://aka.ms/vscode-remote/containers/non-root-user.
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
@@ -50,6 +53,11 @@ RUN mkdir -p /tmp/gotools \
     && go build -o gocode-gomod github.com/stamblerre/gocode \
     # golangci-lint
     && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin 2>&1 \
+    #  # Install goreleaser for support multiple platforms
+    && curl -sSfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh -s -- -b /usr/local/bin 2>&1 \
+    #
+    # It is nesscery to change timezone
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     # Move Go tools into path and clean up
     && mv /tmp/gotools/bin/* /usr/local/bin/ \
     && mv gocode-gomod /usr/local/bin/ \
