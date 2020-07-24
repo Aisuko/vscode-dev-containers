@@ -14,10 +14,38 @@ ARG ENABLE_NONROOT_DOCKER="true"
 ARG SOURCE_SOCKET=/var/run/docker-host.sock
 ARG TARGET_SOCKET=/var/run/docker.sock
 
+# Update the VARIANT arg in devcontainer.json to pick an Go version
+ARG VARIANT=1.14.4
+
+# Install Go tools
+ARG GO_TOOLS_WITH_MODULES="\
+    golang.org/x/tools/gopls \
+    honnef.co/go/tools/... \
+    golang.org/x/tools/cmd/gorename \
+    golang.org/x/tools/cmd/goimports \
+    golang.org/x/tools/cmd/guru \
+    golang.org/x/lint/golint \
+    github.com/mdempsky/gocode \
+    github.com/cweill/gotests/... \
+    github.com/haya14busa/goplay/cmd/goplay \
+    github.com/sqs/goreturns \
+    github.com/josharian/impl \
+    github.com/davidrjenni/reftools/cmd/fillstruct \
+    github.com/uudashr/gopkgs/v2/cmd/gopkgs \
+    github.com/ramya-rao-a/go-outline \
+    github.com/acroca/go-symbols \
+    github.com/godoctor/godoctor \
+    github.com/rogpeppe/godef \
+    github.com/zmb3/gogetdoc \
+    github.com/fatih/gomodifytags \
+    github.com/mgechev/revive \
+    github.com/go-delve/delve/cmd/dlv"
+
+# Init to install needed packages and setup non-root user.
 RUN apt-get update \
     && export DEBIAN_FRONTEND=noninteractive \
-    # Verify common dependencies and utilities are installed
-    && apt-get -y install --no-install-recommends apt-utils dialog git openssh-client curl less iproute2 procps 2>&1 \
+    # Verify common dependencies and utilities are installed and for go build
+    && apt-get -y install --no-install-recommends apt-utils dialog git openssh-client curl less iproute2 procps lsb-release 2>&1 \
     #
     # Create a non-root user to use if not already available - see https://aka.ms/vscode-remote/containers/non-root-user.
     && if [ $(getent passwd $USERNAME) ]; then \
@@ -62,14 +90,43 @@ RUN apt-get update \
             if [ -d "/usr/local/share/minikube-localhost" ]; then\n\
                 mkdir -p $HOME/.minikube\n\
                 sudo cp -r /usr/local/share/minikube-localhost/ca.crt $HOME/.minikube\n\
-                sudo cp -r /usr/local/share/minikube-localhost/client.crt $HOME/.minikube\n\
-                sudo cp -r /usr/local/share/minikube-localhost/client.key $HOME/.minikube\n\
+                sudo cp -r /usr/local/share/minikube-localhost/profiles/minikube/client.crt $HOME/.minikube\n\
+                sudo cp -r /usr/local/share/minikube-localhost/profiles/minikube/client.key $HOME/.minikube\n\
                 sudo chown -R $(id -u) $HOME/.minikube\n\
                 sed -i -r "s|(\s*certificate-authority:\s).*|\\1$HOME\/.minikube\/ca.crt|g" $HOME/.kube/config\n\
                 sed -i -r "s|(\s*client-certificate:\s).*|\\1$HOME\/.minikube\/client.crt|g" $HOME/.kube/config\n\
                 sed -i -r "s|(\s*client-key:\s).*|\\1$HOME\/.minikube\/client.key|g" $HOME/.kube/config\n\
             fi\n\
         fi' | tee -a /root/.bashrc /root/.zshrc /home/${USERNAME}/.bashrc >> /home/${USERNAME}/.zshrc \
+    #
+    # Install Go
+    && curl -sSL -o /tmp/go${VARIANT}.linux-amd64.tar.gz https://golang.org/dl/go${VARIANT}.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go${VARIANT}.linux-amd64.tar.gz \
+    #
+    # Export the Go path for current enviroment
+    && export PATH=$PATH:/usr/local/go/bin \
+    #
+    # Build Go tools w/module support
+    && mkdir -p /tmp/gotools \
+    && cd /tmp/gotools \
+    && export GOPATH=/tmp/gotools \
+    && export GO111MODULE=on \
+    && (echo "${GO_TOOLS_WITH_MODULES}" | xargs -n 1 go get -x )2>&1 \
+    #
+    # Build gocode-gomod
+    && export GO111MODULE=auto \
+    && GOPATH=/tmp/gotools go get -x -d github.com/stamblerre/gocode 2>&1 \
+    && GOPATH=/tmp/gotools go build -o gocode-gomod github.com/stamblerre/gocode \
+    #
+    # Install Go tools
+    && mv /tmp/gotools/bin/* /usr/local/bin/ \
+    && mv gocode-gomod /usr/local/bin/ \
+    #
+    # Install golangci-lint
+    && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin 2>&1 \
+    #
+    # It is nesscery to change timezone
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     #
     # Clean up
     && apt-get autoremove -y \
@@ -84,5 +141,8 @@ RUN apt-get update \
 # Setting the ENTRYPOINT to docker-init.sh will configure non-root access to 
 # the Docker socket if "overrideCommand": false is set in devcontainer.json. 
 # The script will also execute CMD if you need to alter startup behaviors.
+
+ENV PATH=$PATH:/usr/local/go/bin
+
 ENTRYPOINT [ "/usr/local/share/docker-init.sh" ]
 CMD [ "sleep", "infinity" ]
